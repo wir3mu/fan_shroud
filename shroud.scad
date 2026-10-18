@@ -7,6 +7,11 @@ joint_clearance = 0.5;    // Total clearance: male pin is 0.5mm smaller overall 
 
 wall_thickness = 2.5;
 
+// Fillet & Rounding Settings
+corner_radius = 4.0;       // Outer corner rounding radius for housing & base
+boss_fillet_radius = 3.0;  // Fillet radius for screw boss attachment transitions
+airway_fillet = 3.0;       // Internal corner rounding radius for smooth airflow
+
 // Base Plate (Mirrored from center green line)
 base_length_half = 187.5; // Mirrored total length = 375mm
 base_y_top = 25;          
@@ -69,39 +74,62 @@ fan_start_x = -(total_fan_array_width / 2);
 half_rib = fan_center_gap / 2; // 12mm half-width for solid central wall
 
 // ==========================================
+// HELPER MODULE: ROUNDED 2D RECTANGLE
+// ==========================================
+module rounded_rect_2d(w, h, r) {
+    cr = min(r, w/2 - 0.1, h/2 - 0.1);
+    hull() {
+        translate([cr, cr]) circle(r=cr);
+        translate([w - cr, cr]) circle(r=cr);
+        translate([w - cr, h - cr]) circle(r=cr);
+        translate([cr, h - cr]) circle(r=cr);
+    }
+}
+
+// ==========================================
 // MODULE: UNIFIED OUTER SOLID
 // ==========================================
 module outer_solid() {
     union() {
-        // Base Plate Footprint
+        // Base Plate Footprint (Rounded Outer Corners)
         translate([-base_length_half, -base_y_bottom, 0]) 
-            cube([base_length_half * 2, base_y_top + base_y_bottom, base_thickness]);
+            linear_extrude(height = base_thickness)
+            rounded_rect_2d(base_length_half * 2, base_y_top + base_y_bottom, corner_radius);
             
-        // Outer Loft (Base to Fan Tray)
+        // Outer Loft (Base to Fan Tray with Rounded Profiles)
         hull() {
             translate([-base_length_half, -base_y_bottom, base_thickness]) 
-                cube([base_length_half * 2, base_y_top + base_y_bottom, 0.1]);
+                linear_extrude(height = 0.1)
+                rounded_rect_2d(base_length_half * 2, base_y_top + base_y_bottom, corner_radius);
                 
             translate([fan_start_x - wall_thickness, shroud_y_shift - wall_thickness, shroud_z_height])
                 rotate([shroud_angle, 0, 0])
-                cube([total_fan_array_width + (wall_thickness * 2), fan_size + (wall_thickness * 2), 0.1]);
+                linear_extrude(height = 0.1)
+                rounded_rect_2d(total_fan_array_width + (wall_thickness * 2), fan_size + (wall_thickness * 2), corner_radius);
         }
         
-        // Outer Fan Housing Tray
+        // Outer Fan Housing Tray (Rounded Outer Vertical Edges)
         translate([fan_start_x - wall_thickness, shroud_y_shift - wall_thickness, shroud_z_height])
             rotate([shroud_angle, 0, 0])
-            cube([total_fan_array_width + (wall_thickness * 2), fan_size + (wall_thickness * 2), fan_depth + fan_plate_thickness]);
+            linear_extrude(height = fan_depth + fan_plate_thickness)
+            rounded_rect_2d(total_fan_array_width + (wall_thickness * 2), fan_size + (wall_thickness * 2), corner_radius);
             
-        // Left Screw Boss Bracket
+        // Left Screw Boss Bracket (Filleted Blend into Main Base)
         hull() {
             translate([-screw_hole_x, 0, 0]) cylinder(d=boss_diameter, h=boss_height);
-            translate([-screw_hole_x + boss_diameter, -boss_diameter/2, 0]) cube([0.1, boss_diameter, boss_height]);
+            translate([-screw_hole_x + boss_diameter, -boss_diameter/2, 0]) 
+                cube([0.1, boss_diameter, boss_height]);
+            translate([-screw_hole_x + boss_diameter + boss_fillet_radius, 0, 0]) 
+                cylinder(r=boss_fillet_radius, h=boss_height);
         }
         
-        // Right Screw Boss Bracket
+        // Right Screw Boss Bracket (Filleted Blend into Main Base)
         hull() {
             translate([screw_hole_x, 0, 0]) cylinder(d=boss_diameter, h=boss_height);
-            translate([screw_hole_x - boss_diameter, -boss_diameter/2, 0]) cube([0.1, boss_diameter, boss_height]);
+            translate([screw_hole_x - boss_diameter, -boss_diameter/2, 0]) 
+                cube([0.1, boss_diameter, boss_height]);
+            translate([screw_hole_x - boss_diameter - boss_fillet_radius, 0, 0]) 
+                cylinder(r=boss_fillet_radius, h=boss_height);
         }
     }
 }
@@ -112,47 +140,55 @@ module outer_solid() {
 module void_cuts() {
     difference() {
         union() {
-            // A1. Left Airway Loft Cutout (Pivot aligned with outer solid)
+            // A1. Left Airway Loft Cutout (Smooth Rounded Inner Corners)
             hull() {
                 translate([-base_length_half + wall_thickness, -base_y_bottom + wall_thickness, base_thickness]) 
-                    cube([base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), 0.1]);
+                    linear_extrude(height = 0.1)
+                    rounded_rect_2d(base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), airway_fillet);
                     
                 translate([fan_start_x - wall_thickness, shroud_y_shift - wall_thickness, shroud_z_height])
                     rotate([shroud_angle, 0, 0])
                     translate([wall_thickness, wall_thickness, -0.1]) 
-                    cube([(fan_size * 2), fan_size, 0.2]); 
+                    linear_extrude(height = 0.2)
+                    rounded_rect_2d(fan_size * 2, fan_size, airway_fillet); 
             }
 
-            // A2. Right Airway Loft Cutout (Pivot aligned with outer solid)
+            // A2. Right Airway Loft Cutout (Smooth Rounded Inner Corners)
             hull() {
                 translate([half_rib, -base_y_bottom + wall_thickness, base_thickness]) 
-                    cube([base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), 0.1]);
+                    linear_extrude(height = 0.1)
+                    rounded_rect_2d(base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), airway_fillet);
                     
                 translate([fan_start_x - wall_thickness, shroud_y_shift - wall_thickness, shroud_z_height])
                     rotate([shroud_angle, 0, 0])
                     translate([wall_thickness + (fan_size * 2) + fan_center_gap, wall_thickness, -0.1]) 
-                    cube([(fan_size * 2), fan_size, 0.2]); 
+                    linear_extrude(height = 0.2)
+                    rounded_rect_2d(fan_size * 2, fan_size, airway_fillet); 
             }
             
             // B1. Left downward punch
             translate([-base_length_half + wall_thickness, -base_y_bottom + wall_thickness, -1]) 
-                cube([base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), base_thickness + 1.01]);
+                linear_extrude(height = base_thickness + 1.01)
+                rounded_rect_2d(base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), airway_fillet);
 
             // B2. Right downward punch
             translate([half_rib, -base_y_bottom + wall_thickness, -1]) 
-                cube([base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), base_thickness + 1.01]);
+                linear_extrude(height = base_thickness + 1.01)
+                rounded_rect_2d(base_length_half - wall_thickness - half_rib, (base_y_top + base_y_bottom) - (wall_thickness*2), airway_fillet);
             
             // C. Fan Pockets & Integrated Grill Cutouts
             translate([fan_start_x - wall_thickness, shroud_y_shift - wall_thickness, shroud_z_height])
             rotate([shroud_angle, 0, 0]) {
                 
-                // Left 2-Fan Pocket
+                // Left 2-Fan Pocket (Rounded Internal Corners)
                 translate([wall_thickness - (fan_tolerance/2), wall_thickness - (fan_tolerance/2), -0.1])
-                    cube([(fan_size * 2) + fan_tolerance, fan_size + fan_tolerance, fan_depth + 0.2]);
+                    linear_extrude(height = fan_depth + 0.2)
+                    rounded_rect_2d((fan_size * 2) + fan_tolerance, fan_size + fan_tolerance, airway_fillet);
 
-                // Right 2-Fan Pocket
+                // Right 2-Fan Pocket (Rounded Internal Corners)
                 translate([wall_thickness + (fan_size * 2) + fan_center_gap - (fan_tolerance/2), wall_thickness - (fan_tolerance/2), -0.1])
-                    cube([(fan_size * 2) + fan_tolerance, fan_size + fan_tolerance, fan_depth + 0.2]);
+                    linear_extrude(height = fan_depth + 0.2)
+                    rounded_rect_2d((fan_size * 2) + fan_tolerance, fan_size + fan_tolerance, airway_fillet);
                     
                 // Grill & Screw Slots for all 4 fans
                 translate([wall_thickness, wall_thickness, fan_depth - 0.1]) {
@@ -184,7 +220,7 @@ module void_cuts() {
                     }
                 }
 
-                // D. Back Wall Parametric Rounded Rectangle Slots (With X-Offset)
+                // D. Back Wall Parametric Rounded Rectangle Slots
                 if (enable_back_slots) {
                     for (i = [0 : num_fans - 1]) {
                         x_shift = (i >= (num_fans / 2)) ? fan_center_gap : 0;
